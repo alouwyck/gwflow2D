@@ -1,3 +1,6 @@
+"""
+Module containing functions to calculate well-known groundwater flow solutions for radial and parallel flow.
+"""
 import numpy as np
 from scipy.special import exp1, k0, k1, erfc
 from math import factorial, log
