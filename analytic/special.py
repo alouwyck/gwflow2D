@@ -313,7 +313,7 @@ def theis(r, t, T, S, Q, h_out=0.0):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
+      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
 
     References
     ----------
@@ -358,7 +358,7 @@ def theis_recovery(r, t, T, S, Q, t_end, S2=None):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
+      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
 
     References
     ----------
@@ -403,7 +403,7 @@ def edelman(r, t, T, S, h_in=None, Q=None):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
+      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
 
     References
     ----------
@@ -448,7 +448,7 @@ def hantush_jacob(r, t, T, S, Q, c_top, h_top=0.0, ns=12):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
+      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
 
     References
     ----------
@@ -481,8 +481,8 @@ def hemker_steady(r, T, Q, c, c_top, axi=True):
       One-dimensional array with the radial distances [L].
     T : array_like
       Two-element array with the transmissivity [L²/T] of the upper and lower aquifer.
-    Q : float
-      Pumping rate [L³/T] of the well located in the lower aquifer.
+    Q : array_like
+      Two-element array with the pumping rates [L³/T] of the wells located in the upper and lower aquifer.
     c : float
       Vertical resistance [T] of the aquitard separating the two aquifers.
     c_top : float
@@ -500,6 +500,9 @@ def hemker_steady(r, T, Q, c, c_top, axi=True):
     ----------
     Hemker, C.J. (1984). Steady groundwater flow in leaky multiple-aquifer systems. Journal of Hydrology 72, 355-374.
     """
+    r = np.array(r)
+    if r.ndim == 0:
+        r = r[np.newaxis]
     L1, L2, L = T[0] * c_top, T[1] * c, T[1] * c_top
     Lsum, Lprod = L1 + L2 + L, 2 * L1 * L2
     S = np.sqrt(Lsum**2 - 2 * Lprod)
