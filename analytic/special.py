@@ -208,6 +208,8 @@ def deglee_bruggeman(r, T, Q, r_in, c_top, h_top=0.0):
     Calculate the solution for steady flow to a finite-diameter well in a leaky aquifer with impervious lower boundary
     (Bruggeman, 1999; see also Equation A28 in Appendix A of Louwyck et. al., 2022).
 
+# TODO: formule opzoeken in Bruggeman!
+
     Parameters
     ----------
     r : array_like
@@ -313,7 +315,7 @@ def theis(r, t, T, S, Q, h_out=0.0):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
+      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
 
     References
     ----------
@@ -324,7 +326,7 @@ def theis(r, t, T, S, Q, h_out=0.0):
     Water 14(2): 149. https://doi.org/10.3390/w14020149.
 
     """
-    r, t = np.meshgrid(r, t)
+    t, r = np.meshgrid(t, r)
     return h_out + Q / 4 / np.pi / T * exp1(r * r * S / 4 / t / T)
 
 
@@ -358,7 +360,7 @@ def theis_recovery(r, t, T, S, Q, t_end, S2=None):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
+      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
 
     References
     ----------
@@ -403,13 +405,13 @@ def edelman(r, t, T, S, h_in=None, Q=None):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
+      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
 
     References
     ----------
     Edelman, J.H. (1947). Over de berekening van grondwaterstroomingen (in Dutch). Thesis, TU Delft, 79pp.
     """
-    r, t = np.meshgrid(r, t)
+    t, r = np.meshgrid(t, r)
     u = r * np.sqrt(S / 4 / t / T)
     if Q is None:
         return h_in * erfc(u)
@@ -448,7 +450,7 @@ def hantush_jacob(r, t, T, S, Q, c_top, h_top=0.0, ns=12):
     -------
     s : ndarray
       Drawdown [L] at distances `r` and times `t`.
-      Shape of `s` is `(nt, nr)`, with `nt` the length of `t`, and `nr` the length of `r`.
+      Shape of `s` is `(nr, nt)`, with `nr` the length of `r`, and `nt` the length of `t`.
 
     References
     ----------
@@ -464,7 +466,7 @@ def hantush_jacob(r, t, T, S, Q, c_top, h_top=0.0, ns=12):
         r = r[np.newaxis]
     hp = lambda r, p: h_top / p + Q / 2 / np.pi / T / p * k0(r * np.sqrt(S * p / T + 1 / T / c_top))
     h = [stehfest(lambda p: hp(ri, p), t, ns) for ri in r]
-    return np.array(h).T
+    return np.array(h)
 
 
 def hemker_steady(r, T, Q, c, c_top, axi=True):
