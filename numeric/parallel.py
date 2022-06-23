@@ -11,9 +11,8 @@ class Grid(BaseGrid):
         BaseGrid.__init__(self, rb=rb, D=D, constant=constant, inactive=inactive, connected=connected)
 
     def _set_r_hs_vol(self):
-        self.r = np.sqrt(self.rb[:-1] * self.rb[1:])  # (nr, )
-        rb2 = self.rb ** 2  # (nr+1, )
-        self.hs = np.pi * (rb2[1:] - rb2[:-1])  # (nr, )
+        self.r = (self.rb[:-1] + self.rb[1:]) / 2.0  # (nr, )
+        self.hs = self.rb[1:] - self.rb[:-1]  # (nr, )
         self.vol = np.outer(self.D, self.hs)  # (nl, nr)
 
 
@@ -25,13 +24,13 @@ class HorizontalFlowParameters(BaseHorizontalFlowParameters):
     def _calculate_qc(self):
         # must return qc with shape (nl, nr-1), i.e. without inner and outer boundary
         if self.k is None:
-            qc = 2 * np.pi * np.outer(self.D, self.rb[1:-1]) / self.c  # (nl, nr-1)
+            qc = self.D[:, np.newaxis] / self.c  # (nl, nr-1)
         else:
-            rbc = np.log(self.rb[1:] / self.rb[:-1]) / self.k / 2  # (nl, nr)
-            qc = 2 * np.pi * self.D[:, np.newaxis] / (rbc[:, :-1] + rbc[:, 1:])  # (nl, nr-1)
+            rbc = (self.rb[1:] - self.rb[:-1]) / self.k / 2  # (nl, nr)
+            qc = self.D[:, np.newaxis] / (rbc[:, :-1] + rbc[:, 1:])  # (nl, nr-1)
             if self.c is not None:
                 irow, icol = (~np.isnan(self.c)).nonzero()
-                qc[irow, icol] = 2 * np.pi * self.D[irow] * self.rb[icol + 1] / self.c[irow, icol]
+                qc[irow, icol] = self.D[irow, np.newaxis] / self.c[irow, icol]
         return qc
 
 
