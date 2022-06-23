@@ -206,9 +206,7 @@ def deglee(r, T, Q, c_top, h_top=0.0):
 def deglee_bruggeman(r, T, Q, r_in, c_top, h_top=0.0):
     """
     Calculate the solution for steady flow to a finite-diameter well in a leaky aquifer with impervious lower boundary
-    (Bruggeman, 1999; see also Equation A28 in Appendix A of Louwyck et. al., 2022).
-
-# TODO: formule opzoeken in Bruggeman!
+    (Equation 227.14 in Bruggeman, 1999; see also Equation A28 in Appendix A of Louwyck et. al., 2022).
 
     Parameters
     ----------
