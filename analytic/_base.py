@@ -1,5 +1,5 @@
 """
-Base module containing base classes for steady and transient state 2D groundwater flow models.
+Base module containing base classes for analytical steady and transient state 2D groundwater flow models.
 """
 from abc import ABC, abstractmethod
 import numpy as np

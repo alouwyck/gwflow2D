@@ -1,3 +1,6 @@
+"""
+Base module containing classes for numerical steady and transient state 2D groundwater flow models.
+"""
 from abc import ABC, abstractmethod
 import numpy as np
 from scipy.linalg import solve
@@ -6,8 +9,34 @@ from scipy.linalg import LinAlgWarning
 
 
 class Object:
+    """
+    Base class from which all other numerical classes inherit.
+
+    Contains methods for initialization and broadcasting of arrays.
+    """
 
     def _broadcast(self, arr, nrow, ncol, dtype=float):
+        """
+        Convert array into numpy array and broadcast it.
+
+        This method is not static as some subclasses overriding it make use of object `self`.
+
+        Parameters
+        ----------
+        arr : array_like
+            Input array.
+        nrow : int
+             Required number of rows.
+        ncol : int
+             Required number of cols.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         if arr is None:
             return None
         arr = np.array(arr, dtype=dtype)
@@ -25,24 +54,112 @@ class Object:
         return arr
 
     def _zeros(self, nrow, ncol, dtype=float):
+        """
+        Create numpy array of given shape and type, filled with zeros. Makes use of numpy function `zeros`.
+
+        This method is not static as some subclasses overriding it make use of object `self`.
+
+        Parameters
+        ----------
+        nrow : int
+             Required number of rows.
+        ncol : int
+             Required number of cols.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Array of zeros.
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         return np.zeros((nrow, ncol), dtype=dtype)
 
     def _ones(self, nrow, ncol, dtype=float):
+        """
+        Create numpy array of given shape and type, filled with ones. Makes use of numpy function `ones`.
+
+        This method is not static as some subclasses overriding it make use of object `self`.
+
+        Parameters
+        ----------
+        nrow : int
+             Required number of rows.
+        ncol : int
+             Required number of cols.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Array of ones.
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         return np.ones((nrow, ncol), dtype=dtype)
 
 
 class Grid(Object, ABC):
+    """
+    Abstract base class for classes that implement an axi-symmetric or a rectilinear grid.
+
+    Parameters
+    ----------
+    rb : array_like
+       One-dimensional array with radial or horizontal distance [L] of grid cell boundaries.
+       The length of `rb` is `nr + 1`, with `nr` the number of columns in the grid.
+    D : array_like
+      One-dimensional array with height (thickness) [L] of grid layers.
+      The length of `D` is `nl`, with `nl` the number of grid layers.
+    constant : array_like, default: None
+             Two-dimensional boolean array that indicates which cells have a constant head.
+             The shape of `constant` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+             By default, there are no constant-head cells.
+    inactive : array_like, default: None
+             Two-dimensional boolean array that indicates which cells are inactive.
+             The shape of `inactive` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+             By default, there are no inactive cells.
+    connected : array_like, default: None
+              Two-dimensional integer array that indicates which cells are connected.
+              The shape of `connected` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+              By default, there are no connected grid cells.
+
+    Attributes
+    ----------
+    nr : int
+       Number of grid columns (the `r` in `nr` refers to the radial or horizontal distances represented by the cells).
+    nl : int
+       Number of grid layers.
+    n : int
+      Number of cells in the grid, i.e. ``nr * nt``.
+    r : ndarray
+      One-dimensional array representing the radial or horizontal distance [L] of the center of the grid cells.
+      The length of `r` is `nr`.
+    hs : ndarray
+       One-dimensional array representing the horizontal surface [L²] of the grid cells.
+       The length of `hs` is `nr`.
+    vol : ndarray
+        Two-dimensional array representing the volume [L³] of the grid cells.
+        The shape of `vol` is `(nl, nr)`.
+    variable : ndarray
+             Two-dimensional boolean array that indicates which cells have a variable head.
+             By default, all cells have a variable head.
+
+    Notes
+    -----
+    Subclasses implement protected abstract method `_set_r_hs_vol`, which calculates the horizontal or radial
+    distance of the centers of the grid cells, and the horizontal surface and the volume of the cells.
+
+    The class also contains protected method `_is_connected`.
+
+    """
 
     def __init__(self, rb, D, constant=None, inactive=None, connected=None):
-        # rb is (nr+1, ) floating point array (required)
-        # D is (nl, ) floating point array (required)
-        # constant is (nl, nr) boolean array (optional)
-        # inactive is (nl, nr) boolean array (optional)
-        # connected is (nl, nr) integer array (optional)
         Object.__init__(self)
         self.rb = np.array(rb)  # (nr+1, )
         self.D = np.array(D)  # (nl, )
-        if self.D.ndim == 0:  # D is scalar
+        if self.D.ndim == 0:  # if D is a scalar
             self.D = self.D[np.newaxis]
         self.nr = len(self.rb) - 1
         self.nl = len(self.D)
@@ -60,13 +177,41 @@ class Grid(Object, ABC):
         else:
             self.connected = self._broadcast(connected, self.nl, self.nr, int)  # (nl, nr)
         self.variable = ~(self.constant | self.inactive | self._is_connected())  # (nl, nr)
+        self.r = None  # (nr, )
+        self.hs = None  # (nr, )
+        self.vol = None  # (nl, nr)
         self._set_r_hs_vol()
 
     @abstractmethod
     def _set_r_hs_vol(self):
+        """
+        Set attributes `r`, `hs`, and `vol`.
+
+        Abstract method.
+
+        Returns
+        -------
+        None
+        """
         pass
 
     def _is_connected(self):
+        """
+        Check which grid cells are connected.
+
+        Returns
+        -------
+        is_connected : ndarray
+                     Two-dimensional array indicating which grid cells are connected.
+                     The shape of `is_connected` is `(nl, nr)`.
+
+        Notes
+        -----
+        Sets protected attribute `_connected_ids` with linear indices of cells that are connected to each other.
+        `_connected_ids` is a list of tuples `(first, remaining)` with `first` the index of the first cell and
+        `remaining` the indices of the cells connected to the first.
+
+        """
         is_connected = self.connected.astype(bool)  # (nl, nr)
         self._connected_ids = []
         for i in range(1, np.max(self.connected) + 1):
@@ -80,6 +225,14 @@ class Grid(Object, ABC):
 
 
 class GridDependent(Object):
+    """
+    Base class for classes that implement grid-dependent parameters and boundary conditions.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    """
 
     def __init__(self, grid):
         Object.__init__(self)
@@ -87,57 +240,192 @@ class GridDependent(Object):
 
     @property
     def nr(self):
+        """
+        Number of grid columns.
+
+        Returns
+        -------
+        nr: int
+          Number of grid columns.
+        """
         return self.grid.nr
 
     @property
     def nl(self):
+        """
+        Number of grid layers.
+
+        Returns
+        -------
+        nl: int
+          Number of grid layers.
+        """
         return self.grid.nl
 
     @property
     def n(self):
+        """
+        Number of grid cells.
+
+        Returns
+        -------
+        n: int
+          Number of grid cells.
+        """
         return self.grid.n  # n = nl x nr
 
     @property
     def constant(self):
+        """
+        Boolean array that indicates which cells have a constant head.
+
+        Returns
+        -------
+        constant : ndarray
+                 Two-dimensional boolean array that indicates which cells have a constant head.
+                 The shape of `constant` is `(nl, nr)`.
+        """
         return self.grid.constant  # (nl, nr) boolean
 
     @property
     def inactive(self):
+        """
+        Boolean array that indicates which cells have are inactive.
+
+        Returns
+        -------
+        inactive : ndarray
+                 Two-dimensional boolean array that indicates which cells are inactive.
+                 The shape of `inactive` is `(nl, nr)`.
+        """
         return self.grid.inactive  # (nl, nr) boolean
 
     @property
     def connected(self):
+        """
+        Integer array that indicates which cells are connected.
+
+        Returns
+        -------
+        connected : ndarray
+                  Two-dimensional integer array that indicates which cells are connected.
+                  The shape of `connected` is `(nl, nr)`.
+        """
         return self.grid.connected  # (nl, nr) boolean
 
     @property
     def variable(self):
+        """
+        Boolean array that indicates which cells have a variable head.
+
+        Returns
+        -------
+        variable : ndarray
+                 Two-dimensional boolean array that indicates which cells have a variable head.
+                 The shape of `variable` is `(nl, nr)`.
+        """
         return self.grid.variable  # (nl, nr) boolean
 
     @property
     def rb(self):
+        """
+        One-dimensional array with radial or horizontal distance of grid cell boundaries.
+
+        Returns
+        -------
+        rb : ndarray
+           One-dimensional array with radial or horizontal distance [L] of grid cell boundaries.
+           The length of `rb` is `nr + 1`, with `nr` the number of columns in the grid.
+        """
         return self.grid.rb  # (nr+1, )
 
     @property
     def r(self):
+        """
+        One-dimensional array with radial or horizontal distances represented by the grid cells.
+
+        Returns
+        -------
+        r : ndarray
+          One-dimensional array representing the radial or horizontal distance [L] of the center of the grid cells.
+          The length of `r` is `nr`.
+        """
         return self.grid.r  # (nr, )
 
     @property
     def hs(self):
+        """
+        One-dimensional array representing the horizontal surface of the grid cells.
+
+        Returns
+        -------
+        hs : ndarray
+           One-dimensional array representing the horizontal surface [L²] of the grid cells.
+           The length of `hs` is `nr`.
+        """
         return self.grid.hs  # (nr, )
 
     @property
     def D(self):
+        """
+        One-dimensional array with the thickness of the grid layers.
+
+        Returns
+        -------
+        D : array_like
+          One-dimensional array with height (thickness) [L] of grid layers.
+          The length of `D` is `nl`, with `nl` the number of grid layers.
+        """
         return self.grid.D  # (nl, )
 
     @property
     def vol(self):
+        """
+        Two-dimensional array representing the volume of the grid cells.
+
+        Returns
+        -------
+        vol : ndarray
+            Two-dimensional array representing the volume [L³] of the grid cells.
+            The shape of `vol` is `(nl, nr)`.
+        """
         return self.grid.vol  # (nl, nr)
 
     @property
     def _connected_ids(self):
+        """
+        Linear indices of connected cells.
+
+        Returns
+        -------
+        _connected_ids : list
+                       List of tuples `(first, remaining)` with `first` the index of the first cell and
+                       `remaining` the indices of the cells connected to the first.
+        """
         return self.grid._connected_ids
 
     def _broadcast(self, arr, nrow=None, ncol=None, dtype=float):
+        """
+        Convert array into numpy array and broadcast it.
+
+        Overrides `Object._broadcast`.
+
+        Parameters
+        ----------
+        arr : array_like
+            Input array.
+        nrow : int, default: None
+             Required number of rows. If `None`, the number of grid layers `nl` is considered.
+        ncol : int, default: None
+             Required number of cols. If `None`, the number of grid rows `nr` is considered.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         if nrow is None:
             nrow = self.nl
         if ncol is None:
@@ -145,6 +433,26 @@ class GridDependent(Object):
         return Object._broadcast(self, arr, nrow, ncol, dtype)
 
     def _zeros(self, nrow=None, ncol=None, dtype=float):
+        """
+        Create numpy array of given shape and type, filled with zeros.
+
+        Overrides `Object._zeros`.
+
+        Parameters
+        ----------
+        nrow : int, default: None
+             Required number of rows. If `None`, the number of grid layers `nl` is considered.
+        ncol : int, default: None
+             Required number of cols. If `None`, the number of grid rows `nr` is considered.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Array of zeros.
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         if nrow is None:
             nrow = self.nl
         if ncol is None:
@@ -152,6 +460,26 @@ class GridDependent(Object):
         return Object._zeros(self, nrow, ncol, dtype)
 
     def _ones(self, nrow=None, ncol=None, dtype=float):
+        """
+        Create numpy array of given shape and type, filled with ones.
+
+        Overrides `Object._ones`.
+
+        Parameters
+        ----------
+        nrow : int, default: None
+             Required number of rows. If `None`, the number of grid layers `nl` is considered.
+        ncol : int, default: None
+             Required number of cols. If `None`, the number of grid rows `nr` is considered.
+        dtype : data-type, default: float
+              Required datatype. Any object that can be interpreted as a numpy data type.
+
+        Returns
+        -------
+        arr : ndarray
+            Array of ones.
+            Shape of `arr` is `(nrow, ncol)`; datatype is `dtype`.
+        """
         if nrow is None:
             nrow = self.nl
         if ncol is None:
@@ -160,6 +488,23 @@ class GridDependent(Object):
 
 
 class TimeSteps:
+    """
+    Class defining the time steps in the model.
+
+    Parameters
+    ----------
+    t : array_like
+      One-dimensional array with simulation times [T]. Length of `t` is `nt`.
+      If the first element of `t` is not zero, 0.0 is inserted in the front. This first element represents time t = 0
+      for which the initial conditions are defined.
+
+    Attributes
+    ----------
+    dt : ndarray
+       One-dimensional array with the duration [T] of time steps. Length of `dt` is `nt - 1`.
+    nt : int
+       Number of simulation times.
+    """
 
     def __init__(self, t):
         # t is (nt, ) floating point array (required)
@@ -172,16 +517,40 @@ class TimeSteps:
 
 
 class TimeDependent:
+    """
+    Base class for classes that depend on time steps.
+
+    Parameters
+    ----------
+    timesteps : TimeSteps object or list of TimeSteps objects, default: None
+              Contains the time steps if transient state; is `None` if steady state.
+    """
 
     def __init__(self, timesteps=None):
         self.timesteps = timesteps
 
     @property
     def steady(self):
+        """
+        Indicates whether the simulation is steady state or transient state.
+
+        Returns
+        -------
+        steady : bool
+               Is `True` if steady state.
+        """
         return self.timesteps is None
 
     @property
     def nt(self):
+        """
+        Number of simulation times.
+
+        Returns
+        -------
+        nt : int
+           Number of simulation times. In case of steady state, `nt` equals one.
+        """
         if self.steady:
             return 1
         else:
@@ -189,13 +558,31 @@ class TimeDependent:
 
     @property
     def t(self):
+        """
+        One-dimensional array with simulation times.
+
+        Returns
+        -------
+        t : ndarray
+          One-dimensional array with simulation times [T]. Length of `t` is `nt`.
+          In case of steady state, an array only holding 0.0 is returned.
+        """
         if self.steady:
-            return 0
+            return np.array([0.0])
         else:
             return self.timesteps.t  # (nt, )
 
     @property
     def dt(self):
+        """
+        One-dimensional array with the duration of time steps.
+
+        Returns
+        -------
+        dt : ndarray
+           One-dimensional array with the duration [T] of time steps. Length of `dt` is `nt - 1`.
+           In case of steady state, `None` is returned.
+        """
         if self.steady:
             return None
         else:
@@ -203,37 +590,146 @@ class TimeDependent:
 
 
 class HydraulicParameters(GridDependent, ABC):
+    """
+    Abstract base class for classes that define hydraulic parameters.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+
+    Attributes
+    ----------
+    qc : ndarray
+       Two-dimensional array with conductances.
+
+    Notes
+    -----
+    Subclasses implement protected abstract method `_set_qc` to set attribute `qc`.
+    """
 
     def __init__(self, grid):
         GridDependent.__init__(self, grid)
+        self.qc = None
 
     @abstractmethod
     def _set_qc(self):
+        """
+        Calculate conductances and assign them to attribute `qc`.
+
+        Abstract method.
+
+        Returns
+        -------
+        None
+        """
         pass
 
 
 class FlowParameters(HydraulicParameters):
+    """
+    Abstract base class for classes defining flow parameters.
+
+    Parameters
+    ----------
+    grid: Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    k : array_like, default: None
+        Two-dimensional array with hydraulic conductivities [L/T].
+        The shape of `k` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    c : array_like, default: None
+        Two-dimensional array with hydraulic resistances [T].
+
+    Attributes
+    ----------
+    qc : ndarray
+       Two-dimensional array with conductances.
+
+    Notes
+    -----
+    Subclasses implement protected abstract method `_check_c` to check parameter `c` and assign it to attribute `c`.
+    """
 
     def __init__(self, grid, k=None, c=None):
         HydraulicParameters.__init__(self, grid)
         self.k = self._broadcast(k)
+        self.c = None
         self._check_c(c)
         self._set_qc()
 
     @abstractmethod
     def _check_c(self, c):
+        """
+        Check input parameter `c` and assign it to attribute `c`.
+
+        Abstract method.
+
+        Parameters
+        ----------
+        c : array_like
+          Array with hydraulic resistances [T].
+
+        Returns
+        -------
+        None
+        """
         pass
 
 
 class HorizontalFlowParameters(FlowParameters):
+    """
+    Abstract base class for classes defining the radial or horizontal flow parameters.
 
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    k : array_like, default: None
+        Two-dimensional array with horizontal conductivities [L/T] of the grid cells.
+        The shape of `k` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    c : array_like, default: None
+        Two-dimensional array with radial or horizontal resistances [T] between the grid cells.
+        The shape of `c` is `(nl, nr - 1)`, but it is broadcast if dimensions are missing.
+
+    Attributes
+    ----------
+    qc : ndarray
+       Two-dimensional array with radial or horizontal conductances [L²/T] between the grid cells.
+       The shape of `qc` is `(nl, nr + 1)`, which means the zero conductances of the model boundaries are included.
+
+    Notes
+    -----
+    Subclasses implement protected abstract method `_calculate_qc` to set attribute `qc`.
+    """
     def __init__(self, grid, k=None, c=None):
         FlowParameters.__init__(self, grid, k, c)
 
     def _check_c(self, c):
+        """
+        Check input parameter `c` and assign it to attribute `c`.
+        The input array is broadcast if dimensions are missing.
+
+        Parameters
+        ----------
+        c : array_like
+          Array with radial or horizontal resistances [T] between the grid cells.
+
+        Returns
+        -------
+        None
+        """
         self.c = self._broadcast(c, ncol=self.nr - 1)
 
     def _set_qc(self):
+        """
+        Calculate radial or horizontal conductances and assign them to attribute `qc`.
+
+        Calls method `_calculate_qc`.
+
+        Returns
+        -------
+        None
+        """
         self.qc = self._zeros(ncol=self.nr + 1)  # (nl, nr+1)
         qc = self._calculate_qc()
         b = self.inactive[:, :-1] | self.inactive[:, 1:]  # (nl, nr-1)
@@ -242,19 +738,74 @@ class HorizontalFlowParameters(FlowParameters):
 
     @abstractmethod
     def _calculate_qc(self):
-        # must return qc with shape (nl, nr-1), i.e. without inner and outer boundary
+        """
+        Calculate radial or horizontal conductances.
+
+        Returns
+        -------
+        qc : ndarray
+           Two-dimensional array with radial or horizontal conductances [L²/T] between the grid cells.
+           The shape of `qc` is `(nl, nr - 1)`, which means the model boundaries are not included.
+        """
         pass
 
 
 class VerticalFlowParameters(FlowParameters):
+    """
+    Class defining the vertical flow parameters.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    k : array_like, default: None
+        Two-dimensional array with vertical conductivities [L/T] of the grid cells.
+        The shape of `k` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    c : array_like, default: None
+        Two-dimensional array with vertical resistances [T] between the grid layers.
+        The shape of `c` is `(nl - 1, nr)`, but it is broadcast if dimensions are missing.
+
+    Attributes
+    ----------
+    qc : ndarray
+       Two-dimensional array with vertical conductances [L²/T] between the grid layers.
+       The shape of `qc` is `(nl + 1, nr)`, which means the zero conductances of the model boundaries are included.
+
+    Notes
+    -----
+    If input parameter `c` is not given, then conductances are colculated using input parameters `k`, and
+    if input parameter `k` is not given, then conductances are colculated using input parameters `c`.
+    If both input parameters `k` and `c` are given, then conductances are calculated using `k`, after which the
+    calculated conductances are replaced by conductances calculated using elements of `c` which are not `nan`.
+    """
 
     def __init__(self, grid, k=None, c=None):
         FlowParameters.__init__(self, grid, k, c)
 
     def _check_c(self, c):
+        """
+        Check input parameter `c` and assign it to attribute `c`.
+        The input array is broadcast if dimensions are missing.
+
+        Parameters
+        ----------
+        c : array_like
+          Array with vertical resistances [T] between the grid layers.
+
+        Returns
+        -------
+        None
+        """
         self.c = self._broadcast(c, nrow=self.nl - 1)
 
     def _set_qc(self):
+        """
+        Calculate vertical conductances and assign them to attribute `qc`.
+
+        Returns
+        -------
+        None
+        """
         self.qc = self._zeros(nrow=self.nl + 1)  # (nl+1, nr)
         if self.k is None:
             c = self.c  # (nl-1, nr)
@@ -270,19 +821,82 @@ class VerticalFlowParameters(FlowParameters):
 
 
 class StorageParameters(HydraulicParameters):
+    """
+    Class defining the storage parameters.
 
-    def __init__(self, grid, ss):
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    ss : array_like
+        Two-dimensional array with specific storage [1/L] of the grid cells.
+        The shape of `ss` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    sy : array_like
+        One-dimensional array with specific yield [-] of the grid cells in the top layer.
+        The length of `sy` is `nr`, but it is broadcast if only one value is given.
+
+    Attributes
+    ----------
+    qc : ndarray
+       Two-dimensional array with constant terms to calculate storage change in each cell.
+       In case of `ss`, the constant term of a cell is calculated as the volume of the cell multiplied by `ss`.
+       If `sy` is given, then the horizontal surface of the cell multiplied by `sy` is added to the constant term.
+       The shape of `qc` is `(nl, nr)`.
+    """
+
+    def __init__(self, grid, ss, sy=None):
         HydraulicParameters.__init__(self, grid)
         self.ss = self._broadcast(ss)  # (nl, nr)
+        self.sy = None  # (nr, )
+        self._check_sy(sy)
         self._set_qc()
 
+    def _check_sy(self, sy):
+        """
+        Check input parameter `sy` and assign it to attribute `sy`.
+        The input array is broadcast if only one value is given.
+
+        Parameters
+        ----------
+        sy : array_like
+           One-dimensional array with specific yield [-] of the grid cells in the top layer.
+
+        Returns
+        -------
+        None
+        """
+        if sy is not None:
+            self.sy = np.array(sy)
+            if self.sy.ndim == 0:
+                self.sy = self.sy * np.ones(self.nr)
+
     def _set_qc(self):
+        """
+        Calculate constant storage change terms and assign them to attribute `qc`.
+
+        Returns
+        -------
+        None
+        """
         self.qc = self._zeros()  # (nl, nr)
         b = self.variable  # (nl, nr)
         self.qc[b] = self.vol[b] * self.ss[b]
+        if self.sy is not None:  # take into account specific yield of top layer
+            self.qc[0, :] += self.hs * self.sy
 
 
 class Discharges(GridDependent):
+    """
+    Class defining discharges.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    q : array_like
+      Two-dimensional array with discharge [L³/T or L³/T /L] in each grid cell.
+      The shape of `q` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    """
 
     def __init__(self, grid, q):
         GridDependent.__init__(self, grid)
@@ -290,6 +904,23 @@ class Discharges(GridDependent):
 
 
 class ConstantHeads(GridDependent):
+    """
+    Class defining constant heads.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    h : array_like
+      Two-dimensional array with constant head [L] in each grid cell.
+      The shape of `h` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+
+    Notes
+    -----
+    The defined constant head in a cell is taken into account only if the cell is defined as having a constant head.
+    This is indicated by `grid.constant`. By default, the head in a constant-head cell is zero.
+    This means defining constant heads using this class is required only if some of these heads are nonzero.
+    """
 
     def __init__(self, grid, h):
         GridDependent.__init__(self, grid)
@@ -297,6 +928,28 @@ class ConstantHeads(GridDependent):
 
 
 class InitialHeads(ConstantHeads):
+    """
+    Class defining the initial heads of a stress period.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    h : array_like
+      Two-dimensional array with initial head [L] in each grid cell.
+      The shape of `h` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    add : bool, default: False
+        Indicates whether the given initial heads should be added to the heads simulated for the last time step of the
+        previous stress period or not.
+        # TODO: checken of dit klopt!!
+
+    Notes
+    -----
+    The defined initial head in a cell is taken into account only if the cell is defined as having a variable head.
+    This is indicated by `grid.variable`. By default, the initial head in a variable-head cell is zero.
+    This means defining initial heads using this class is required only if some of these heads are nonzero.
+    # TODO: checken of dit klopt!!
+    """
 
     def __init__(self, grid, h, add=False):
         ConstantHeads.__init__(self, grid, h)
@@ -304,6 +957,37 @@ class InitialHeads(ConstantHeads):
 
 
 class HeadDependentFluxes(HydraulicParameters, ConstantHeads):
+    """
+    Class defining head-dependent flux boundary conditions.
+
+    If a cell contains a head-dependent flux boundary condition, the vertical flow is determined by the difference
+    in head between the cell and the given constant head and by the given resistance.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    dependent : array_like
+              Two-dimensional boolean array that indicates which cells have a head-dependent flux boundary condition.
+              The shape of `dependent` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    c : array_like
+      Two-dimensional array with the vertical resistances [T].
+      The shape of `c` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+    h : array_like, default: None
+      Two-dimensional array with the constant heads [L].
+      The shape of `h` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+      By default, array `h` contains zeros only.
+
+    Attributes
+    ----------
+    idx : ndarray
+        One-dimensional array with the linear indices of the cells in which a head-dependent flux boundary condition is
+        defined.
+    qc : ndarray
+       Two-dimensional array with the vertical conductances [L²/T] of the head-dependent boundary conditions.
+       As the flow is vertical, the conductance is defined as the horizontal surface `hs` of the cell divided by the
+       vertical resistance `c`. The shape of `qc` is `(nl, nr)`.
+    """
 
     def __init__(self, grid, dependent, c, h=None):
         HydraulicParameters.__init__(self, grid)
@@ -315,13 +999,35 @@ class HeadDependentFluxes(HydraulicParameters, ConstantHeads):
         self._set_qc()
 
     def _set_qc(self):
+        """
+        Calculate vertical conductances and assign them to attribute `qc`.
+
+        Returns
+        -------
+        None
+        """
         irow, icol = self.dependent.nonzero()
         self.idx = irow * self.nr + icol
         self.qc = self.hs[icol] / self.c.flatten()[self.idx]
 
 
 class SolveHeads(GridDependent, TimeDependent, ABC):
+    """
+    Abstract base class for classes that simulate hydraulic heads.
 
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    timesteps : TimeSteps object or list of TimeSteps objects, default: None
+              Contains the time steps if transient state; is `None` if steady state.
+
+    Methods
+    -------
+    solve() : abstract
+            Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
+            if transient state. This method is implemented in the subclasses.
+    """
     def __init__(self, grid, timesteps=None):
         GridDependent.__init__(self, grid)
         TimeDependent.__init__(self, timesteps)
@@ -329,10 +1035,27 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
 
     @property
     def h(self):
+        """
+        Hydraulic heads.
+
+        Returns
+        -------
+        h : ndarray
+          Three-dimensional array with simulated head [L] in each grid cell and for each time step.
+          The shape of `h` is `(nl, nr, nt)`. Note that `nt` equals 1 in case of steady state simulation.
+        """
         return self._h
 
     @abstractmethod
     def solve(self):
+        """
+        Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
+        if transient state.
+
+        Returns
+        -------
+        None
+        """
         pass
 
 
