@@ -1,3 +1,7 @@
+"""
+Module containing specific classes to build numerical steady and transient state models for simulating 2D parallel
+groundwater flow.
+"""
 import numpy as np
 from ._base import Grid as BaseGrid
 from ._base import HorizontalFlowParameters as BaseHorizontalFlowParameters
