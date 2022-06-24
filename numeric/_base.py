@@ -102,7 +102,7 @@ class Object:
 
 class Grid(Object, ABC):
     """
-    Abstract base class for classes that implement an axi-symmetric or a rectilinear grid.
+    Abstract base class for classes that implement a two-dimensional axi-symmetric or a rectilinear grid.
 
     Parameters
     ----------
@@ -132,7 +132,7 @@ class Grid(Object, ABC):
     nl : int
        Number of grid layers.
     n : int
-      Number of cells in the grid, i.e. ``nr * nt``.
+      Number of cells in the grid, i.e. ``nr * nl``.
     r : ndarray
       One-dimensional array representing the radial or horizontal distance [L] of the center of the grid cells.
       The length of `r` is `nr`.
@@ -701,6 +701,7 @@ class HorizontalFlowParameters(FlowParameters):
     -----
     Subclasses implement protected abstract method `_calculate_qc` to set attribute `qc`.
     """
+
     def __init__(self, grid, k=None, c=None):
         FlowParameters.__init__(self, grid, k, c)
 
@@ -1051,6 +1052,8 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
         """
         Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
         if transient state.
+
+        Abstract method.
 
         Returns
         -------
