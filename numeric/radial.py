@@ -1,5 +1,5 @@
 """
-Module containing specific classes to build finite-difference models for simulating 2D radial
+Module containing specific classes to build finite-difference models for simulating two-dimensional radial
 groundwater flow.
 """
 import numpy as np
