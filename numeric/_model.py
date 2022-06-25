@@ -432,10 +432,12 @@ class StressPeriod(SolveHeads):
            The shape of `h0` is `(nl, nr)`.
         """
         if self.previous is not None:
-            if self._initial_heads.add:
-                return self._initial_heads.h + (self.previous.h if self.previous.steady else self.previous.h[:, :, -1])
-            else:
+            if self._initial_heads is None:
                 return self.previous.h if self.previous.steady else self.previous.h[:, :, -1]  # (nl, nr)
+            elif self._initial_heads.add:
+                return self._initial_heads.h + (self.previous.h if self.previous.steady else self.previous.h[:, :, -1])  # (nl, nr)
+            else:
+                return self._initial_heads.h  # (nl, nr)
         elif self._initial_heads is not None:
             return self._initial_heads.h  # (nl, nr)
         else:
@@ -922,7 +924,10 @@ class Model(SolveHeads):
         t : ndarray
           One-dimensional array with simulation times [T].
         """
-        return np.hstack([period.t + (period.previous.t[-1] if period.previous else 0.0) for period in self.periods])
+        t = self.periods[0].t
+        for period in self.periods[1:]:
+            t = np.hstack((t, t[-1] + period.t))
+        return t
 
     @property
     def dt(self):

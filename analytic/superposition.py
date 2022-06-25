@@ -89,13 +89,14 @@ class VariableQH:
         if t.ndim == 0:
             t = t[np.newaxis]
         h = self.model.h(r, t)
-        QH = getattr(self.model, self._QHstr)
+        QH0 = QH = getattr(self.model, self._QHstr)
         for i in range(len(self.t)):
-            setattr(self.model, self._QHstr, self._QH[:, i] - getattr(self.model, self._QHstr))
+            setattr(self.model, self._QHstr, self._QH[:, i] - QH)
+            QH = self._QH[:, i]
             b = t > self.t[i]
             dt = t[b] - self.t[i]
             h[:, :, b] += self.model.h(r, dt)
-        setattr(self.model, self._QHstr, QH)
+        setattr(self.model, self._QHstr, QH0)
         return h
 
     @property
