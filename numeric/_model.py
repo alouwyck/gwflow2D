@@ -911,7 +911,6 @@ class Model(SolveHeads):
         nt : int
            Total number of simulation times.
         """
-        # TODO: is dat correct? Moet dat niet nt -1 zijn?
         return sum([period.nt for period in self.periods if not period.steady])
 
     @property
