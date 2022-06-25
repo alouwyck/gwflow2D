@@ -93,6 +93,14 @@ class HorizontalFlowParameters(BaseHorizontalFlowParameters):
     qc : ndarray
        Two-dimensional array with radial conductances [L²/T] between the grid cells.
        The shape of `qc` is `(nl, nr + 1)`, which means the zero conductances of the model boundaries are included.
+
+    Notes
+    -----
+    If input parameter `c` is not given, then conductances are colculated using input parameters `k`, and
+    if input parameter `k` is not given, then conductances are colculated using input parameters `c`.
+    If both input parameters `k` and `c` are given, then conductances are calculated using `k`, after which the
+    calculated conductances are replaced by conductances calculated using elements of `c` which are not `nan`.
+
     """
 
     def __init__(self, grid, k=None, c=None):
@@ -120,6 +128,41 @@ class HorizontalFlowParameters(BaseHorizontalFlowParameters):
 
 
 class StressPeriod(BaseStressPeriod):
+    """
+    Class defining a stress period.
+
+    A stress period is a period during which boundary conditions do not change with time.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric two-dimensional grid.
+    timesteps : TimeSteps object, default: None
+              Contains the time steps if transient state; is `None` if steady state.
+    previous : TimeSteps object, default: None
+             Contains the time steps of previous stress period.
+
+    Methods
+    -------
+    add_kh(kh, ch) :
+                  Add radial flow parameters.
+    add_kv(kv, cv) :
+                   Add vertical flow parameters.
+    add_ss(ss, sy) :
+                   Add storage parameters.
+    add_q(q) :
+             Add discharges.
+    add_h0(h0, add) :
+                    Add initial heads.
+    add_hc(hc) :
+               Add constant heads.
+    add_hdep(dependent, cdep, hdep) :
+                                    Add head-dependent flux boundary conditions.
+    solve() :
+            Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
+            if transient state.
+
+    """
 
     def __init__(self, grid, timesteps=None, previous=None):
         BaseStressPeriod.__init__(self, grid, timesteps, previous)
@@ -127,6 +170,29 @@ class StressPeriod(BaseStressPeriod):
 
 
 class Model(BaseModel):
+    """
+    Class to build finite-difference models for simulating steady and transient two-dimensional axi-symmetric flow.
+
+    Attributes
+    ----------
+    grid : Grid object
+         Two-dimensional axi-symmetric finite-difference grid.
+    timesteps : list of TimeSteps objects
+              Contains the subsequent time steps.
+    periods : list of StressPeriod objects
+            Contains the subsequent stress periods.
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
+
+    Methods
+    -------
+    add_grid(rb, D, constant, inactive, connected) :
+                                                   Define the two-dimensional finite-difference grid.
+    add_period(t) :
+                  Define and add a new stress period.
+    solve() :
+            Solve the matrix system of finite-difference equations.
+    """
 
     def __init__(self):
         BaseModel.__init__(self)

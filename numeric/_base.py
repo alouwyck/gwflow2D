@@ -102,7 +102,8 @@ class Object:
 
 class Grid(Object, ABC):
     """
-    Abstract base class for classes that implement a two-dimensional axi-symmetric or a rectilinear grid.
+    Abstract base class for classes that implement a two-dimensional axi-symmetric or a rectilinear finite-difference
+    grid.
 
     Parameters
     ----------
@@ -685,7 +686,7 @@ class HorizontalFlowParameters(FlowParameters):
     grid : Grid object
          Axi-symmetric or rectilinear two-dimensional grid.
     k : array_like, default: None
-        Two-dimensional array with horizontal conductivities [L/T] of the grid cells.
+        Two-dimensional array with radial or horizontal conductivities [L/T] of the grid cells.
         The shape of `k` is `(nl, nr)`, but it is broadcast if dimensions are missing.
     c : array_like, default: None
         Two-dimensional array with radial or horizontal resistances [T] between the grid cells.
@@ -700,6 +701,12 @@ class HorizontalFlowParameters(FlowParameters):
     Notes
     -----
     Subclasses implement protected abstract method `_calculate_qc` to set attribute `qc`.
+
+    If input parameter `c` is not given, then conductances are colculated using input parameters `k`, and
+    if input parameter `k` is not given, then conductances are colculated using input parameters `c`.
+    If both input parameters `k` and `c` are given, then conductances are calculated using `k`, after which the
+    calculated conductances are replaced by conductances calculated using elements of `c` which are not `nan`.
+
     """
 
     def __init__(self, grid, k=None, c=None):
@@ -778,6 +785,7 @@ class VerticalFlowParameters(FlowParameters):
     if input parameter `k` is not given, then conductances are colculated using input parameters `c`.
     If both input parameters `k` and `c` are given, then conductances are calculated using `k`, after which the
     calculated conductances are replaced by conductances calculated using elements of `c` which are not `nan`.
+
     """
 
     def __init__(self, grid, k=None, c=None):
@@ -1042,7 +1050,7 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
         Returns
         -------
         h : ndarray
-          Three-dimensional array with simulated head [L] in each grid cell and for each time step.
+          Three-dimensional array with simulated head [L] in each grid cell and for each time.
           The shape of `h` is `(nl, nr, nt)`. Note that `nt` equals 1 in case of steady state simulation.
         """
         return self._h
@@ -1063,6 +1071,46 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
 
 
 class StressPeriod(SolveHeads):
+    """
+    Base class for classes defining a stress period.
+
+    A stress period is a period during which boundary conditions do not change with time.
+
+    Parameters
+    ----------
+    grid : Grid object
+         Axi-symmetric or rectilinear two-dimensional grid.
+    timesteps : TimeSteps object, default: None
+              Contains the time steps if transient state; is `None` if steady state.
+    previous : TimeSteps object, default: None
+             Contains the time steps of previous stress period.
+
+    Methods
+    -------
+    add_kh(kh, ch) :
+                  Add radial or horizontal flow parameters.
+    add_kv(kv, cv) :
+                   Add vertical flow parameters.
+    add_ss(ss, sy) :
+                   Add storage parameters.
+    add_q(q) :
+             Add discharges.
+    add_h0(h0, add) :
+                    Add initial heads.
+    add_hc(hc) :
+               Add constant heads.
+    add_hdep(dependent, cdep, hdep) :
+                                    Add head-dependent flux boundary conditions.
+    solve() :
+            Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
+            if transient state.
+
+    Notes
+    -----
+    Subclasses assign the appropriate `HorizontalFLowParameters` class to protected attribute
+    `_horizontal_flow_constructor` during instantiation.
+
+    """
 
     def __init__(self, grid, timesteps=None, previous=None):
         SolveHeads.__init__(self, grid, timesteps)
@@ -1080,174 +1128,483 @@ class StressPeriod(SolveHeads):
         self._horizontal_flow_constructor = None  # SUBCLASSING: assign HorizontalFlowParameters class!
 
     def add_kh(self, kh=None, ch=None):
+        """
+        Add radial or horizontal flow parameters.
+
+        Parameters
+        ----------
+        kh : array_like, default: None
+             Two-dimensional array with radial or horizontal conductivities [L/T] of the grid cells.
+             The shape of `kh` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        ch : array_like, default: None
+             Two-dimensional array with radial or horizontal resistances [T] between the grid cells.
+             The shape of `ch` is `(nl, nr - 1)`, but it is broadcast if dimensions are missing.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        If input parameter `ch` is not given, then conductances are colculated using input parameters `kh`, and
+        if input parameter `kh` is not given, then conductances are colculated using input parameters `ch`.
+        If both input parameters `kh` and `ch` are given, then conductances are calculated using `kh`, after which the
+        calculated conductances are replaced by conductances calculated using elements of `ch` which are not `nan`.
+        """
         self._horizontal_flow_parameters = self._horizontal_flow_constructor(self.grid, kh, ch)
         self._new_A0 = True
         self._new_b0 = True
 
     @property
-    def kh(self):  # (nl, nr)
+    def kh(self):
+        """
+        Radial or horizontal conductivities.
+
+        Returns
+        -------
+        kh : ndarray
+           Two-dimensional array with radial or horizontal conductivity [L/T] in each cell of the grid.
+           The shape of `kh` is `(nl, nr)`.
+        """
         if self.nr == 1:
             return None
         elif self._horizontal_flow_parameters is not None:
-            return self._horizontal_flow_parameters.k
+            return self._horizontal_flow_parameters.k  # (nl, nr)
         else:
-            return self.previous.kh
+            return self.previous.kh  # (nl, nr)
 
     @property
-    def ch(self):  # (nl, nr-1)
+    def ch(self):
+        """
+        Radial or horizontal resistances.
+
+        Returns
+        -------
+        ch : ndarray
+           Two-dimensional array with radial or horizontal resistances [T] between the grid cells.
+           The shape of `ch` is `(nl, nr - 1)`, which means the infinitely large resistances of the model boundaries are
+           not included.
+        """
         if self.nr == 1:
             return None
         elif self._horizontal_flow_parameters is not None:
-            return self._horizontal_flow_parameters.c
+            return self._horizontal_flow_parameters.c  # (nl, nr-1)
         else:
-            return self.previous.ch
+            return self.previous.ch  # (nl, nr-1)
 
     @property
-    def qhc(self):  # (nl, nr+1)
+    def qhc(self):
+        """
+        Radial or horizontal conductances.
+
+        Returns
+        -------
+        qhc : ndarray
+            Two-dimensional array with radial or horizontal conductances [L²/T] between the grid cells.
+            The shape of `qhc` is `(nl, nr + 1)`, which means the zero conductances of the model boundaries are included.
+        """
         if self.nr == 1:
             return np.zeros((self.nl, 2))
         elif self._horizontal_flow_parameters is not None:
-            return self._horizontal_flow_parameters.qc
+            return self._horizontal_flow_parameters.qc  # (nl, nr+1)
         else:
-            return self.previous.qhc
+            return self.previous.qhc  # (nl, nr+1)
 
     def add_kv(self, kv=None, cv=None):
+        """
+        Add vertical flow parameters.
+
+        Parameters
+        ----------
+        kv : array_like, default: None
+             Two-dimensional array with vertical conductivities [L/T] of the grid cells.
+             The shape of `kv` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        cv : array_like, default: None
+             Two-dimensional array with vertical resistances [T] between the grid cells.
+             The shape of `cv` is `(nl, nr - 1)`, but it is broadcast if dimensions are missing.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        If input parameter `cv` is not given, then conductances are colculated using input parameters `kv`, and
+        if input parameter `kv` is not given, then conductances are colculated using input parameters `cv`.
+        If both input parameters `kv` and `cv` are given, then conductances are calculated using `kv`, after which the
+        calculated conductances are replaced by conductances calculated using elements of `cv` which are not `nan`.
+        """
         self._vertical_flow_parameters = VerticalFlowParameters(self.grid, kv, cv)
         self._new_A0 = True
         self._new_b0 = True
 
     @property
-    def kv(self):  # (nl, nr)
+    def kv(self):
+        """
+        Vertical conductivities.
+
+        Returns
+        -------
+        kv : ndarray
+           Two-dimensional array with vertical conductivity [L/T] in each cell of the grid.
+           The shape of `kv` is `(nl, nr)`.
+        """
         if self.nl == 1:
             return None
         elif self._vertical_flow_parameters is not None:
-            return self._vertical_flow_parameters.k
+            return self._vertical_flow_parameters.k  # (nl, nr)
         else:
-            return self.previous.kv
+            return self.previous.kv  # (nl, nr)
 
     @property
-    def cv(self):  # (nl-1, nr)
+    def cv(self):
+        """
+        Vertical resistances.
+
+        Returns
+        -------
+        cv : ndarray
+           Two-dimensional array with vertical resistances [T] between the grid cells.
+           The shape of `cv` is `(nl - 1, nr)`, which means the infinitely large resistances of the model boundaries are
+           not included.
+        """
         if self.nl == 1:
             return None
         elif self._vertical_flow_parameters is not None:
-            return self._vertical_flow_parameters.c
+            return self._vertical_flow_parameters.c  # (nl-1, nr)
         else:
-            return self.previous.cv
+            return self.previous.cv  # (nl-1, nr)
 
     @property
-    def qvc(self):  # (nl+1, nr)
+    def qvc(self):
+        """
+        Vertical conductances.
+
+        Returns
+        -------
+        qvc : ndarray
+            Two-dimensional array with vertical conductances [L²/T] between the grid cells.
+            The shape of `qvc` is `(nl + 1, nr)`, which means the zero conductances of the model boundaries are included.
+        """
         if self.nl == 1:
             return np.zeros((2, self.nr))
         elif self._vertical_flow_parameters is not None:
-            return self._vertical_flow_parameters.qc
+            return self._vertical_flow_parameters.qc  # (nl+1, nr)
         else:
-            return self.previous.qvc
+            return self.previous.qvc  # (nl+1, nr)
 
-    def add_ss(self, ss):
-        self._storage_parameters = StorageParameters(self.grid, ss)
+    def add_ss(self, ss, sy=None):
+        """
+        Add storage parameters.
+
+        Parameters
+        ----------
+        ss : array_like
+            Two-dimensional array with specific storage [1/L] of the grid cells.
+            The shape of `ss` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        sy : array_like
+            One-dimensional array with specific yield [-] of the grid cells in the top layer.
+            The length of `sy` is `nr`, but it is broadcast if only one value is given.
+
+        Returns
+        -------
+        None
+        """
+        self._storage_parameters = StorageParameters(self.grid, ss, sy)
         self._new_dS0 = True
 
     @property
-    def ss(self):  # (nl, nr)
+    def ss(self):
+        """
+        Specific elastic storages.
+
+        Returns
+        -------
+        ss : ndarray
+           Two-dimensional array with specific elastic storage [1/L] in each cell of the grid.
+           The shape of `ss` is `(nl, nr)`.
+        """
         if self.steady:
             return None
         elif self._storage_parameters is not None:
-            return self._storage_parameters.ss
+            return self._storage_parameters.ss  # (nl, nr)
         else:
-            return self.previous.ss
+            return self.previous.ss  # (nl, nr)
 
     @property
-    def qsc(self):  # (nl, nr)
+    def sy(self):
+        """
+        Specific yields in the top layer.
+
+        Returns
+        -------
+        sy : ndarray
+           One-dimensional array with specific yield [-] of the grid cells in the top layer.
+           The length of `sy` is `nr`.
+        """
         if self.steady:
             return None
         elif self._storage_parameters is not None:
-            return self._storage_parameters.qc
+            return self._storage_parameters.sy  # (nr, )
         else:
-            return self.previous.qsc
+            return self.previous.sy  # (nr, )
+
+    @property
+    def qsc(self):
+        """
+        Constant terms to calculate storage change in each cell.
+
+        Returns
+        -------
+        qsc : ndarray
+            Two-dimensional array with constant terms to calculate storage change in each cell.
+            In case of `ss`, the constant term of a cell is calculated as the volume of the cell multiplied by `ss`.
+            If `sy` is given, then the horizontal surface of the cell multiplied by `sy` is added to the constant term.
+            The shape of `qsc` is `(nl, nr)`.
+        """
+        if self.steady:
+            return None
+        elif self._storage_parameters is not None:
+            return self._storage_parameters.qc  # (nl, nr)
+        else:
+            return self.previous.qsc  # (nl, nr)
 
     def add_q(self, q):
+        """
+        Add discharges.
+
+        Parameters
+        ----------
+        q : array_like
+          Two-dimensional array with discharge [L³/T or L³/T /L] in each grid cell.
+          The shape of `q` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+
+        Returns
+        -------
+        None
+        """
         self._discharges = Discharges(self.grid, q)
         self._new_b0 = True
 
     @property
-    def q(self):  # (nl, nr)
+    def q(self):
+        """
+        Discharges.
+
+        Returns
+        -------
+        q : ndarray
+          Two-dimensional array with discharge [L³/T or L³/T /L] in each grid cell.
+          The shape of `q` is `(nl, nr)`.
+        """
         if self._discharges is not None:
-            return self._discharges.q
+            return self._discharges.q  # (nl, nr)
         elif self.previous is not None:
-            return self.previous.q
+            return self.previous.q  # (nl, nr)
         else:
-            return np.zeros((self.nl, self.nr))
+            return np.zeros((self.nl, self.nr))  # (nl, nr)
 
     def add_h0(self, h0, add=False):
+        """
+        Add initial heads.
+
+        Parameters
+        ----------
+        h0 : array_like
+           Two-dimensional array with initial head [L] in each grid cell.
+           The shape of `h0` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        add : bool, default: False
+            Indicates whether the given initial heads should be added to the heads simulated for the last time step of
+            the previous stress period or not.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        The defined initial head in a cell is taken into account only if the cell is defined as having a variable head.
+        This is indicated by `grid.variable`. By default, the initial head in a variable-head cell is zero.
+        This means defining initial heads using this class is required only if some of these heads are nonzero.
+        """
         self._initial_heads = InitialHeads(self.grid, h0, add)
 
     @property
-    def h0(self):  # (nl, nr)
+    def h0(self):
+        """
+        Initial heads.
+
+        Returns
+        -------
+        h0 : ndarray
+           Two-dimensional array with initial head [L] in each grid cell.
+           The shape of `h0` is `(nl, nr)`.
+        """
         if self.previous is not None:
             if self._initial_heads.add:
                 return self._initial_heads.h + (self.previous.h if self.previous.steady else self.previous.h[:, :, -1])
             else:
-                return self.previous.h if self.previous.steady else self.previous.h[:, :, -1]
+                return self.previous.h if self.previous.steady else self.previous.h[:, :, -1]  # (nl, nr)
         elif self._initial_heads is not None:
-            return self._initial_heads.h
+            return self._initial_heads.h  # (nl, nr)
         else:
-            return np.zeros((self.nl, self.nr))
+            return np.zeros((self.nl, self.nr))  # (nl, nr)
 
     def add_hc(self, hc):
+        """
+        Add constant heads.
+
+        Parameters
+        ----------
+        hc : array_like
+           Two-dimensional array with constant head [L] in each grid cell.
+           The shape of `h0` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        The defined constant head in a cell is taken into account only if the cell is defined as having a constant head.
+        This is indicated by `grid.constant`. By default, the head in a constant-head cell is zero.
+        This means defining constant heads using this class is required only if some of these heads are nonzero.
+        """
         self._constant_heads = ConstantHeads(self.grid, hc)
         self._new_b0 = True
 
     @property
-    def hc(self):  # (nl, nr)
+    def hc(self):
+        """
+        Constant heads.
+
+        Returns
+        -------
+        hc : ndarray
+           Two-dimensional array with constant head [L] in each grid cell.
+           The shape of `hc` is `(nl, nr)`.
+        """
         if self._constant_heads is not None:
-            return self._constant_heads.h
+            return self._constant_heads.h  # (nl, nr)
         elif self.previous is not None:
-            return self.previous.hc
+            return self.previous.hc  # (nl, nr)
         else:
-            return np.zeros((self.nl, self.nr))
+            return np.zeros((self.nl, self.nr))  # (nl, nr)
 
     def add_hdep(self, dependent, cdep, hdep=None):
+        """
+        Add head-dependent flux boundary conditions.
+
+        Parameters
+        ----------
+        dependent : array_like
+                  Two-dimensional boolean array that indicates which cells have a head-dependent flux boundary condition.
+                  The shape of `dependent` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        cdep : array_like
+             Two-dimensional array with the vertical resistances [T].
+             The shape of `c` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+        hdep : array_like, default: None
+             Two-dimensional array with the constant heads [L].
+             The shape of `h` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+             By default, array `h` contains zeros only.
+
+        Returns
+        -------
+        None
+        """
         self._head_dependent_fluxes = HeadDependentFluxes(self.grid, dependent, cdep, hdep)
         self._new_A0 = True
         self._new_b0 = True
 
     @property
-    def dependent(self):  # (nl, nr)
+    def dependent(self):
+        """
+        Indicates which cells have a head-dependent flux boundary condition.
+
+        Returns
+        -------
+        dependent : ndarray
+                  Two-dimensional boolean array that indicates which cells have a head-dependent flux boundary condition.
+                  The shape of `dependent` is `(nl, nr)`.
+        """
         if self._head_dependent_fluxes is not None:
-            return self._head_dependent_fluxes.dependent
+            return self._head_dependent_fluxes.dependent  # (nl, nr)
         elif self.previous is not None:
-            return self.previous.dependent
+            return self.previous.dependent  # (nl, nr)
         else:
             return None
 
     @property
-    def cdep(self):  # (nl, nr)
+    def cdep(self):
+        """
+        Vertical resistances of the head-dependent flux boundary conditions.
+
+        Returns
+        -------
+        cdep : ndarray
+             Two-dimensional array with the vertical resistances [T].
+             The shape of `c` is `(nl, nr)`.
+        """
         if self._head_dependent_fluxes is not None:
-            return self._head_dependent_fluxes.c
+            return self._head_dependent_fluxes.c  # (nl, nr)
         elif self.previous is not None:
-            return self.previous.cdep
+            return self.previous.cdep  # (nl, nr)
         else:
             return None
 
     @property
-    def hdep(self):  # (nl, nr)
+    def hdep(self):
+        """
+        Constant heads of the head-dependent flux boundary conditions.
+
+        Returns
+        -------
+        hdep : ndarray
+             Two-dimensional array with the constant heads [L].
+             The shape of `h` is `(nl, nr)`.
+        """
         if self._head_dependent_fluxes is not None:
-            return self._head_dependent_fluxes.h
+            return self._head_dependent_fluxes.h  # (nl, nr)
         elif self.previous is not None:
-            return self.previous.hdep
+            return self.previous.hdep  # (nl, nr)
         else:
             return None
 
     @property
-    def qdc(self):  # tuple (idx, qdc)
+    def qdc(self):
+        """
+        Vertical conductances of the head-dependent flux boundary conditions.
+
+        Returns
+        -------
+        qdc : tuple
+            First element is `idx`, second is `qdc`.
+        idx : ndarray
+            One-dimensional array with the linear indices of the cells in which a head-dependent flux boundary condition
+            is defined.
+        qdc : ndarray
+            Two-dimensional array with the vertical conductances [L²/T] of the head-dependent boundary conditions.
+            As the flow is vertical, the conductance is defined as the horizontal surface `hs` of the cell divided by
+            the vertical resistance `c`. The shape of `qdc` is `(nl, nr)`.
+
+        # TODO: checken of die idx echt nodig is!
+        """
         if self._head_dependent_fluxes is not None:
-            return self._head_dependent_fluxes.idx, self._head_dependent_fluxes.qc
+            return self._head_dependent_fluxes.idx, self._head_dependent_fluxes.qc  # tuple (idx, qdc)
         elif self.previous is not None:
-            return self.previous.qdc
+            return self.previous.qdc  # tuple (idx, qdc)
         else:
             return None, None
 
     def _initialize_h(self):
+        """
+        Initialize heads taking into account initial and constant heads and inactive cells.
+        Assign initial heads to protected attribute `_h`.
+
+        Returns
+        -------
+        None
+        """
         # initial heads
         self._h = self.h0.flatten()
         # inactive cells
@@ -1258,6 +1615,16 @@ class StressPeriod(SolveHeads):
         self._h = np.repeat(self._h[:, np.newaxis], self.nt, axis=1)
 
     def _calculate_A0(self):
+        """
+        Calculate initial matrix A0 using the flow conductances. It contains the time-independent coefficients of the
+        unknown heads, i.e. the left-hand side of the matrix equation.
+
+        Assigns A0 to protected attribute `_A0`.
+
+        Returns
+        -------
+        None
+        """
         if self._new_A0:
             # indices
             nr = self.nr
@@ -1278,6 +1645,17 @@ class StressPeriod(SolveHeads):
             self._A0 = self.previous._A0
 
     def _calculate_b0(self):
+        """
+        Calculate initial vector b0 taking into account discharges, constant heads, and head-dependent flux boundary
+        conditions. It contains the time-independent known constants of the matrix equation, i.e. the right-hand side
+        of the matrix equation.
+
+        Assigns b0 to protected attribute `_b0`
+
+        Returns
+        -------
+        None
+        """
         if self._new_b0:
             # discharges
             self._b0 = -self.q.flatten()  # (n, )
@@ -1292,6 +1670,20 @@ class StressPeriod(SolveHeads):
             self._b0 = self.previous._b0
 
     def _get_A0_b0(self):
+        """
+        Get initial matrix A0 and vector b0 that express the system of finite-difference equations.
+
+        Returns
+        -------
+        A0 : ndarray
+           Two-dimensional array with the known time-independent coefficients of the hydraulic heads,
+           i.e. the left-hand side of the  matrix equation.
+           The shape of `A0` is `(n, n)`, with `n` the total number of grid cells.
+        b0 : ndarray
+           One-dimensional array with the known time-independent constants,
+           i.e. the right-hand side of the matrix equation.
+           The length of `b0` is `n`.
+        """
         self._calculate_A0()
         self._calculate_b0()
         A0, b0 = self._A0.copy(), self._b0.copy()
@@ -1307,6 +1699,17 @@ class StressPeriod(SolveHeads):
         return A0, b0
 
     def _get_dS0(self):
+        """
+        Get the constant storage change terms.
+
+        These terms are divided by the time step and subtracted from the diagonal entries of matrix A0.
+
+        Returns
+        -------
+        dS0: ndarray
+           One-dimensional array with the constant storage change terms.
+           The length of `dS0` is `n`, the total number of grid cells.
+        """
         if self._new_dS0:
             self._dS0 = self.qsc.flatten()  # (n, )
         else:
@@ -1317,6 +1720,15 @@ class StressPeriod(SolveHeads):
         return dS0[self._is_variable]
 
     def _initialize(self):
+        """
+        Initialize the matrix system.
+
+        Returns
+        -------
+        None
+
+        # TODO: gebruik de methoden die de termen apart initialiseren en berekenen.
+        """
         # indices
         nr = self.nr
         self._idx = np.diag_indices(self.n)
@@ -1361,17 +1773,25 @@ class StressPeriod(SolveHeads):
             self._dS0 = self._dS0[self._is_variable]  # keep variable head cells only
 
     def solve(self):
+        """
+        Solve the matrix system of finite-difference equations.
+
+        Returns
+        -------
+        None
+        """
         self._initialize()
         if self.steady:
             self._h[self._is_variable, 0] = solve(self._A0, self._b0)
         else:  # transient
             h = self._h[self._is_variable, 0]
-            i = np.diag_indices(self._A0.shape[0])
+            # i = np.diag_indices(self._A0.shape[0])
             for k in range(self.nt - 1):
                 dS = self._dS0 / self.dt[k]
                 b = self._b0 - dS * h
                 A = self._A0.copy()
-                A[i] -= dS
+                # A[i] -= dS
+                A[self._idx] -= dS
                 h = solve(A, b)
                 self._h[self._is_variable, k + 1] = h
         for first, remaining in self._connected_ids:
@@ -1380,6 +1800,34 @@ class StressPeriod(SolveHeads):
 
 
 class Model(SolveHeads):
+    """
+    Base model for classes implementing steady and transient state 2D finite-difference groundwater flow models.
+
+    Attributes
+    ----------
+    grid : Grid object
+         Two-dimensional axi-symmetric or a rectilinear finite-difference grid.
+    timesteps : list of TimeSteps objects
+              Contains the subsequent time steps.
+    periods : list of StressPeriod objects
+            Contains the subsequent stress periods.
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
+
+    Methods
+    -------
+    add_grid(rb, D, constant, inactive, connected) :
+                                                   Define the two-dimensional finite-difference grid.
+    add_period(t) :
+                  Define and add a new stress period.
+    solve() :
+            Solve the matrix system of finite-difference equations.
+
+    Notes
+    -----
+    During instantiation, subclasses assign the appropriate `Grid` class to protected attribute `_grid_constructor`,
+    and the appropriate `StressPeriod` class to protected attribute `_period_constructor`.
+    """
 
     def __init__(self):
         SolveHeads.__init__(self, None, [])
@@ -1389,10 +1837,57 @@ class Model(SolveHeads):
         self._period_constructor = None  # SUBCLASSING: assign StressPeriod class!
 
     def add_grid(self, rb, D, constant=None, inactive=None, connected=None):
+        """
+        Define the two-dimensional axi-symmetric or rectilinear finite-difference grid.
+
+        Parameters
+        ----------
+        rb : array_like
+           One-dimensional array with radial or horizontal distance [L] of grid cell boundaries.
+           The length of `rb` is `nr + 1`, with `nr` the number of columns in the grid.
+        D : array_like
+          One-dimensional array with height (thickness) [L] of grid layers.
+          The length of `D` is `nl`, with `nl` the number of grid layers.
+        constant : array_like, default: None
+                 Two-dimensional boolean array that indicates which cells have a constant head.
+                 The shape of `constant` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+                 By default, there are no constant-head cells.
+        inactive : array_like, default: None
+                 Two-dimensional boolean array that indicates which cells are inactive.
+                 The shape of `inactive` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+                 By default, there are no inactive cells.
+        connected : array_like, default: None
+                  Two-dimensional integer array that indicates which cells are connected.
+                  The shape of `connected` is `(nl, nr)`, but it is broadcast if dimensions are missing.
+                  By default, there are no connected grid cells.
+
+        Returns
+        -------
+        grid : Grid object
+             Two-dimensional axi-symmetric or rectilinear finite-difference grid.
+        """
         self.grid = self._grid_constructor(rb=rb, D=D, constant=constant, inactive=inactive, connected=connected)
         return self.grid
 
     def add_period(self, t=None):
+        """
+        Define and add new stress period.
+
+        A stress period is a period during which boundary conditions do not change with time.
+
+        Parameters
+        ----------
+        t : array_like, default: None
+          One-dimensional array with simulation times [T]. Length of `t` is `nt`.
+          If `t` is `None`, then the stress period is steady state.
+          If the first element of `t` is not zero, 0.0 is inserted in the front. This first element represents time
+          t = 0 for which the initial conditions are defined.
+
+        Returns
+        -------
+        period : StressPeriod object
+               Stress period with time steps.
+        """
         timesteps = None if t is None else TimeSteps(t)
         self.timesteps.append(timesteps)
         previous = None if len(self.periods) == 0 else self.periods[-1]
@@ -1402,22 +1897,63 @@ class Model(SolveHeads):
 
     @property
     def steady(self):
+        """
+        Indicates whether the stress periods are steady or transient state.
+
+        Returns
+        -------
+        steady : ndarray
+               One-dimensional boolean array indicating whether the stress periods are steady or transient state.
+               The length of `steady` is equal to the number of stress periods.
+        """
         return np.array([period.steady for period in self.periods])
 
     @property
     def nt(self):
+        """
+        Number of simulation times.
+
+        Returns
+        -------
+        nt : int
+           Total number of simulation times.
+        """
+        # TODO: is dat correct? Moet dat niet nt -1 zijn?
         return sum([period.nt for period in self.periods if not period.steady])
 
     @property
     def t(self):
+        """
+        Simulation times.
+
+        Returns
+        -------
+        t : ndarray
+          One-dimensional array with simulation times [T].
+        """
         return np.hstack([period.t + (period.previous.t[-1] if period.previous else 0.0) for period in self.periods])
 
     @property
     def dt(self):
+        """
+        Time steps.
+
+        Returns
+        -------
+        dt : ndarray
+           One-dimensional array with duration [T] of time steps.
+        """
         t = self.t
         return t[1:] - t[:-1]
 
     def solve(self):
+        """
+        Solve the matrix system of finite-difference equations.
+
+        Returns
+        -------
+        None
+        """
         with warnings.catch_warnings():
             if self.no_warnings:
                 warnings.filterwarnings('ignore', category=LinAlgWarning)  # suppress scipy.linalg warnings
@@ -1427,5 +1963,14 @@ class Model(SolveHeads):
 
     @property
     def h(self):
+        """
+        Hydraulic heads.
+
+        Returns
+        -------
+        h : ndarray
+          Three-dimensional array with simulated head [L] in each grid cell and for each time.
+          The shape of `h` is `(nl, nr, nt)`. Note that `nt` equals 1 in case of steady state simulation.
+        """
         return np.concatenate([period.h for period in self.periods], axis=2)
 
