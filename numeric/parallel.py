@@ -1,5 +1,5 @@
 """
-Module containing specific classes to build finite-difference models for simulating 2D parallel
+Module containing specific classes to build finite-difference models for simulating two-dimensional parallel
 groundwater flow.
 """
 import numpy as np
