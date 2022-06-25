@@ -3,10 +3,10 @@ Module containing specific classes to build finite-difference models for simulat
 groundwater flow.
 """
 import numpy as np
-from ._base import Grid as BaseGrid
-from ._base import HorizontalFlowParameters as BaseHorizontalFlowParameters
-from ._base import StressPeriod as BaseStressPeriod
-from ._base import Model as BaseModel
+from ._discretization import Grid as BaseGrid
+from ._parameters import HorizontalFlowParameters as BaseHorizontalFlowParameters
+from ._model import StressPeriod as BaseStressPeriod
+from ._model import Model as BaseModel
 
 
 class Grid(BaseGrid):
