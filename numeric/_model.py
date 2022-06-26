@@ -589,129 +589,6 @@ class StressPeriod(SolveHeads):
         else:
             return None, None
 
-    def _initialize_h(self):
-        """
-        Initialize heads taking into account initial and constant heads and inactive cells.
-        Assign initial heads to protected attribute `_h`.
-
-        Returns
-        -------
-        None
-        """
-        # initial heads
-        self._h = self.h0.flatten()
-        # inactive cells
-        self._h[self.inactive.flatten()] = np.nan
-        # constant heads
-        self._h[self.constant.flatten()] = self.hc[self.constant]
-        # add time dimension to h
-        self._h = np.repeat(self._h[:, np.newaxis], self.nt, axis=1)
-
-    def _calculate_A0(self):
-        """
-        Calculate initial matrix A0 using the flow conductances. It contains the time-independent coefficients of the
-        unknown heads, i.e. the left-hand side of the matrix equation.
-
-        Assigns A0 to protected attribute `_A0`.
-
-        Returns
-        -------
-        None
-        """
-        if self._new_A0:
-            # indices
-            nr = self.nr
-            self._idx = np.diag_indices(self.n)
-            irow, icol = self._idx
-            # initialize A0
-            self._A0 = np.zeros((self.n, self.n))  # (n, n)
-            # set A0 diagonals
-            qhc, qvc = self.qhc, self.qvc
-            self._A0[irow[:-1] + 1, icol[:-1]] = self._A0[irow[:-1], icol[:-1] + 1] = qhc[:, 1:].flatten()[:-1]
-            self._A0[irow[:-nr] + nr, icol[:-nr]] = self._A0[irow[:-nr], icol[:-nr] + nr] = qvc[1:, :].flatten()[:-nr]
-            self._A0[irow, icol] = -(qhc[:, :-1] + qhc[:, 1:] + qvc[:-1, :] + qvc[1:, :]).flatten()
-            # head dependent cells
-            i, qdc = self.qdc
-            if i is not None:
-                self._A0[i, i] -= qdc
-        else:
-            self._A0 = self.previous._A0
-
-    def _calculate_b0(self):
-        """
-        Calculate initial vector b0 taking into account discharges, constant heads, and head-dependent flux boundary
-        conditions. It contains the time-independent known constants of the matrix equation, i.e. the right-hand side
-        of the matrix equation.
-
-        Assigns b0 to protected attribute `_b0`
-
-        Returns
-        -------
-        None
-        """
-        if self._new_b0:
-            # discharges
-            self._b0 = -self.q.flatten()  # (n, )
-            # constant heads: first calculate A0 and initialize h!!
-            is_constant = self.constant.flatten()
-            self._b0 -= np.dot(self._A0[:, is_constant], self._h[is_constant, 0])
-            # head dependent cells
-            i, qdc = self.qdc
-            if i is not None:
-                self._b0[i] -= qdc * self.hdep.flatten()[i]
-        else:
-            self._b0 = self.previous._b0
-
-    def _get_A0_b0(self):
-        """
-        Get initial matrix A0 and vector b0 that express the system of finite-difference equations.
-
-        Returns
-        -------
-        A0 : ndarray
-           Two-dimensional array with the known time-independent coefficients of the hydraulic heads,
-           i.e. the left-hand side of the  matrix equation.
-           The shape of `A0` is `(n, n)`, with `n` the total number of grid cells.
-        b0 : ndarray
-           One-dimensional array with the known time-independent constants,
-           i.e. the right-hand side of the matrix equation.
-           The length of `b0` is `n`.
-        """
-        self._calculate_A0()
-        self._calculate_b0()
-        A0, b0 = self._A0.copy(), self._b0.copy()
-        # connected cells
-        for first, remaining in self._connected_ids:
-            A0[first, :] += A0[remaining, :].sum(axis=0)
-            A0[:, first] += A0[:, remaining].sum(axis=1)
-            b0[first] += b0[remaining].sum()
-        # remove rows and columns corresponding to cells with no variable head
-        self._is_variable = self.variable.flatten()
-        A0 = A0[self._is_variable, :][:, self._is_variable]
-        b0 = b0[self._is_variable]
-        return A0, b0
-
-    def _get_dS0(self):
-        """
-        Get the constant storage change terms.
-
-        These terms are divided by the time step and subtracted from the diagonal entries of matrix A0.
-
-        Returns
-        -------
-        dS0: ndarray
-           One-dimensional array with the constant storage change terms.
-           The length of `dS0` is `n`, the total number of grid cells.
-        """
-        if self._new_dS0:
-            self._dS0 = self.qsc.flatten()  # (n, )
-        else:
-            self._dS0 = self.previous._dS0
-        dS0 = self._dS0.copy()
-        for first, remaining in self._connected_ids:
-            dS0[first] += dS0[remaining].sum()
-        return dS0[self._is_variable]
-
     def _initialize(self):
         """
         Initialize the matrix system.
@@ -719,8 +596,6 @@ class StressPeriod(SolveHeads):
         Returns
         -------
         None
-
-        # TODO: gebruik de methoden die de termen apart initialiseren en berekenen.
         """
         # indices
         nr = self.nr
@@ -778,12 +653,10 @@ class StressPeriod(SolveHeads):
             self._h[self._is_variable, 0] = solve(self._A0, self._b0)
         else:  # transient
             h = self._h[self._is_variable, 0]
-            # i = np.diag_indices(self._A0.shape[0])
             for k in range(self.nt - 1):
                 dS = self._dS0 / self.dt[k]
                 b = self._b0 - dS * h
                 A = self._A0.copy()
-                # A[i] -= dS
                 A[self._idx] -= dS
                 h = solve(A, b)
                 self._h[self._is_variable, k + 1] = h
