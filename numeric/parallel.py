@@ -140,6 +140,8 @@ class StressPeriod(BaseStressPeriod):
               Contains the time steps if transient state; is `None` if steady state.
     previous : TimeSteps object, default: None
              Contains the time steps of previous stress period.
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Methods
     -------
@@ -162,14 +164,19 @@ class StressPeriod(BaseStressPeriod):
             if transient state.
     """
 
-    def __init__(self, grid, timesteps=None, previous=None):
-        BaseStressPeriod.__init__(self, grid, timesteps, previous)
+    def __init__(self, grid, timesteps=None, previous=None, no_warnings=True):
+        BaseStressPeriod.__init__(self, grid, timesteps, previous, no_warnings)
         self._horizontal_flow_constructor = HorizontalFlowParameters
 
 
 class Model(BaseModel):
     """
     Class to build finite-difference models for simulating steady and transient two-dimensional parallel flow.
+
+    Parameters
+    ----------
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Attributes
     ----------
@@ -179,8 +186,6 @@ class Model(BaseModel):
               Contains the subsequent time steps.
     periods : list of StressPeriod objects
             Contains the subsequent stress periods.
-    no_warnings : bool, default: True
-                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Methods
     -------
@@ -192,7 +197,7 @@ class Model(BaseModel):
             Solve the matrix system of finite-difference equations.
     """
 
-    def __init__(self):
-        BaseModel.__init__(self)
+    def __init__(self, no_warnings=True):
+        BaseModel.__init__(self, no_warnings)
         self._grid_constructor = Grid
         self._period_constructor = StressPeriod

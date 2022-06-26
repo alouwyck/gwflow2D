@@ -21,6 +21,8 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
          Axi-symmetric or rectilinear two-dimensional grid.
     timesteps : TimeSteps object or list of TimeSteps objects, default: None
               Contains the time steps if transient state; is `None` if steady state.
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Methods
     -------
@@ -28,9 +30,10 @@ class SolveHeads(GridDependent, TimeDependent, ABC):
             Solve the system of finite-difference equations to obtain the head in each grid cell, and for each time step
             if transient state. This method is implemented in the subclasses.
     """
-    def __init__(self, grid, timesteps=None):
+    def __init__(self, grid, timesteps=None, no_warnings=True):
         GridDependent.__init__(self, grid)
         TimeDependent.__init__(self, timesteps)
+        self.no_warnings = no_warnings
         self._h = None
 
     @property
@@ -75,6 +78,8 @@ class StressPeriod(SolveHeads):
               Contains the time steps if transient state; is `None` if steady state.
     previous : TimeSteps object, default: None
              Contains the time steps of previous stress period.
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Methods
     -------
@@ -103,8 +108,8 @@ class StressPeriod(SolveHeads):
 
     """
 
-    def __init__(self, grid, timesteps=None, previous=None):
-        SolveHeads.__init__(self, grid, timesteps)
+    def __init__(self, grid, timesteps=None, previous=None, no_warnings=True):
+        SolveHeads.__init__(self, grid, timesteps, no_warnings)
         self.previous = previous
         self._horizontal_flow_parameters = None
         self._vertical_flow_parameters = None
@@ -113,9 +118,6 @@ class StressPeriod(SolveHeads):
         self._constant_heads = None
         self._discharges = None
         self._head_dependent_fluxes = None
-        self._new_A0 = False
-        self._new_b0 = False
-        self._new_dS0 = False
         self._horizontal_flow_constructor = None  # SUBCLASSING: assign HorizontalFlowParameters class!
 
     def add_kh(self, kh=None, ch=None):
@@ -133,7 +135,7 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        par : HorizontalFlowParameters object
 
         Notes
         -----
@@ -142,9 +144,11 @@ class StressPeriod(SolveHeads):
         If both input parameters `kh` and `ch` are given, then conductances are calculated using `kh`, after which the
         calculated conductances are replaced by conductances calculated using elements of `ch` which are not `nan`.
         """
-        self._horizontal_flow_parameters = self._horizontal_flow_constructor(self.grid, kh, ch)
-        self._new_A0 = True
-        self._new_b0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._horizontal_flow_parameters = self._horizontal_flow_constructor(self.grid, kh, ch)
+            return self._horizontal_flow_parameters
 
     @property
     def kh(self):
@@ -216,7 +220,7 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        par : VerticalFlowParameters object
 
         Notes
         -----
@@ -225,9 +229,11 @@ class StressPeriod(SolveHeads):
         If both input parameters `kv` and `cv` are given, then conductances are calculated using `kv`, after which the
         calculated conductances are replaced by conductances calculated using elements of `cv` which are not `nan`.
         """
-        self._vertical_flow_parameters = VerticalFlowParameters(self.grid, kv, cv)
-        self._new_A0 = True
-        self._new_b0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._vertical_flow_parameters = VerticalFlowParameters(self.grid, kv, cv)
+            return self._vertical_flow_parameters
 
     @property
     def kv(self):
@@ -299,10 +305,13 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        par : StorageParameters object
         """
-        self._storage_parameters = StorageParameters(self.grid, ss, sy)
-        self._new_dS0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._storage_parameters = StorageParameters(self.grid, ss, sy)
+        return self._storage_parameters
 
     @property
     def ss(self):
@@ -372,10 +381,14 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        cond : Discharges object
         """
-        self._discharges = Discharges(self.grid, q)
-        self._new_b0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._discharges = Discharges(self.grid, q)
+            return self._discharges
+
 
     @property
     def q(self):
@@ -410,7 +423,7 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        cond : InitialHeads object
 
         Notes
         -----
@@ -418,7 +431,11 @@ class StressPeriod(SolveHeads):
         This is indicated by `grid.variable`. By default, the initial head in a variable-head cell is zero.
         This means defining initial heads using this class is required only if some of these heads are nonzero.
         """
-        self._initial_heads = InitialHeads(self.grid, h0, add)
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._initial_heads = InitialHeads(self.grid, h0, add)
+            return self._initial_heads
 
     @property
     def h0(self):
@@ -455,7 +472,7 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        cond : ConstantHeads object
 
         Notes
         -----
@@ -463,8 +480,11 @@ class StressPeriod(SolveHeads):
         This is indicated by `grid.constant`. By default, the head in a constant-head cell is zero.
         This means defining constant heads using this class is required only if some of these heads are nonzero.
         """
-        self._constant_heads = ConstantHeads(self.grid, hc)
-        self._new_b0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._constant_heads = ConstantHeads(self.grid, hc)
+            return self._constant_heads
 
     @property
     def hc(self):
@@ -503,11 +523,13 @@ class StressPeriod(SolveHeads):
 
         Returns
         -------
-        None
+        cond : HeadDependentFluxes object
         """
-        self._head_dependent_fluxes = HeadDependentFluxes(self.grid, dependent, cdep, hdep)
-        self._new_A0 = True
-        self._new_b0 = True
+        with warnings.catch_warnings():
+            if self.no_warnings:
+                warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+            self._head_dependent_fluxes = HeadDependentFluxes(self.grid, dependent, cdep, hdep)
+            return self._head_dependent_fluxes
 
     @property
     def dependent(self):
@@ -669,6 +691,11 @@ class Model(SolveHeads):
     """
     Base model for classes implementing steady and transient state 2D finite-difference groundwater flow models.
 
+    Parameters
+    ----------
+    no_warnings : bool, default: True
+                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
+
     Attributes
     ----------
     grid : Grid object
@@ -677,8 +704,6 @@ class Model(SolveHeads):
               Contains the subsequent time steps.
     periods : list of StressPeriod objects
             Contains the subsequent stress periods.
-    no_warnings : bool, default: True
-                If `True`, the following warnings are suppressed: `RunTimeWarning` and SciPy `LinAlgWarning`.
 
     Methods
     -------
@@ -695,10 +720,9 @@ class Model(SolveHeads):
     and the appropriate `StressPeriod` class to protected attribute `_period_constructor`.
     """
 
-    def __init__(self):
-        SolveHeads.__init__(self, None, [])
+    def __init__(self, no_warnings=True):
+        SolveHeads.__init__(self, None, [], no_warnings)
         self.periods = []
-        self.no_warnings = True
         self._grid_constructor = None  # SUBCLASSING: assign Grid class!
         self._period_constructor = None  # SUBCLASSING: assign StressPeriod class!
 
@@ -757,7 +781,8 @@ class Model(SolveHeads):
         timesteps = None if t is None else TimeSteps(t)
         self.timesteps.append(timesteps)
         previous = None if len(self.periods) == 0 else self.periods[-1]
-        period = self._period_constructor(grid=self.grid, timesteps=timesteps, previous=previous)
+        period = self._period_constructor(grid=self.grid, timesteps=timesteps, previous=previous,
+                                          no_warnings=self.no_warnings)
         self.periods.append(period)
         return period
 
