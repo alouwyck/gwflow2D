@@ -508,7 +508,7 @@ def hemker_steady(r, T, Q, c, c_top, axi=True):
     Lsum, Lprod = L1 + L2 + L, 2 * L1 * L2
     S = np.sqrt(Lsum**2 - 2 * Lprod)
     w1, w2 = (Lsum - S) / Lprod, (Lsum + S) / Lprod
-    v11, v12, v21, v22 = 1 - w1*L2, 1 - w2*L2, 1.0, 1.0
+    v11, v12 = 1 - w1*L2, 1 - w2*L2
     q1, q2 = Q[0] / T[0], Q[1] / T[1]
     x1, x2 = r*np.sqrt(w1), r*np.sqrt(w2)
     if axi:
