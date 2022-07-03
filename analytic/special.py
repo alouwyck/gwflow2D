@@ -414,7 +414,7 @@ def edelman(r, t, T, S, h_in=None, Q=None):
     if Q is None:
         return h_in * erfc(u)
     else:
-        return Q * np.sqrt(t / T / S) * (2 / np.sqrt(np.pi) * np.exp(-u**2) - 2 * u * erfc(u))
+        return 2 * Q * np.sqrt(t / T / S) * (np.exp(-u**2) / np.sqrt(np.pi) - u * erfc(u))
 
 
 def hantush_jacob(r, t, T, S, Q, c_top, h_top=0.0, ns=12):
@@ -469,8 +469,9 @@ def hantush_jacob(r, t, T, S, Q, c_top, h_top=0.0, ns=12):
 
 def hemker_steady(r, T, Q, c, c_top, axi=True):
     """
-    Calculate the solution for steady flow to a pumping well in the lower aquifer of a leaky two-aquifer system.
-    The well has an infinitesimal radius and extracts water at a constant pumping rate.
+    Calculate the solution for steady well-flow in a leaky two-aquifer system with impervious lower boundary.
+    The well has an infinitesimal radius and a separate fully penetrating screen in each aquifer.
+    It extracts water at a constant pumping rate.
     The exact analytical solution is obtained applying the method described by Hemker (1984).
 
     It is also possible to obtain the solution for parallel flow under the same conditions. See input parameter `axi`.
