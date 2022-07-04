@@ -4,6 +4,7 @@ Module containing functions to calculate well-known groundwater flow solutions f
 import numpy as np
 from scipy.special import exp1, k0, i0, k1, erfc
 from math import factorial, log
+import warnings
 
 
 def darcy(r, T, Q, r_out, h_out=0.0):
@@ -245,16 +246,18 @@ def deglee(r, T, Q, r_in=0.0, c_top=np.inf, h_top=0.0, c_bot=np.inf, h_bot=0.0):
 
     """
     r = np.array(r)
-    d = 1 / c_top + 1 / c_bot
+    d = 1 / c_top / T + 1 / c_bot / T
     sd = np.sqrt(d)
     xi = r_in * sd
-    ki = k1(xi) * xi
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning)  # suppress runtime warnings
+        ki = k1(xi) * xi
     if np.isnan(ki):
         ki = 1.0
     if np.isinf(c_top) and not np.isinf(c_bot):
         h1 = 0.0
         h2 = h_bot
-    elif np.isinf(c_bot) and not np.isninf(c_top):
+    elif np.isinf(c_bot) and not np.isinf(c_top):
         h1 = h_top
         h2 = 0.0
     else:
@@ -565,9 +568,9 @@ def bakker(r, T, Q, c, r_out, h_out=0.0, N=None):
     # head change due to recharge
     if N is not None:
         NT = N / Ttot
-        z = (1 + i0w) / d
+        z = (1 - i0w) / d
         dr = (r_out**2 - r**2) / 4
-        h[0, :] += NT * (dr + T[0] / T[1] * z)
+        h[0, :] += NT * (dr + T[1] / T[0] * z)
         h[1, :] += NT * (dr - z)
     return h
 
